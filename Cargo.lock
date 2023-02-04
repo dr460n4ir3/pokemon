@@ -1345,6 +1345,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gamepad"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d137992c2852acedf3ece53c9685804c34f8bb3f64054de825124bde13caa780"
+dependencies = [
+ "gilrs",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2317,6 +2326,7 @@ name = "pokemon"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "gamepad",
 ]
 
 [[package]]
