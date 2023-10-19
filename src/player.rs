@@ -1,4 +1,4 @@
-use bevy::{prelude::*, sprite::collide_aabb::collide};
+use bevy::{prelude::*, sprite::collide_aabb::collide, transform};
 use bevy_inspector_egui::Inspectable;
 
 use crate::{
@@ -23,6 +23,15 @@ impl Plugin for PlayerPlugin {
         .add_system(player_controller.label("movement"));
     }
 }
+
+//This is the monster encounter system
+fn monster_encounter_check(
+    player_query: Query<&Transform, With<Player>>,
+    encounter_query: Query<&Transform, (With<EncounterSpawn>, Without<Player>)>,
+) {
+    
+    }
+
 
 // This function Player movement camera
 fn camara_follow(
@@ -86,8 +95,11 @@ fn player_controller(
 
     // transform.translation += Vec3::new(x_delta, y_delta, 0.0);
     let target = transform.translation + Vec3::new(x_delta, 0.0, 0.0);
-    if collision_check(target, &wall_query) {
-        transform.translation = target;
+    if !wall_query
+        .iter()
+        .any(|&transform| collision_check(target, transform)) 
+    {
+        transform.translation = target; //https://youtu.be/uTmp8PiI6aw?si=GMQIwDUQi9Wl44yT&t=77
     }
 
     let target = transform.translation + Vec3::new(0.0, y_delta, 0.0);
@@ -99,22 +111,14 @@ fn player_controller(
 }
 
 // This function controls collision with walls
-fn collision_check(
-    target_player_pos: Vec3,
-    wall_query: &Query<&Transform, (With<TileCollider>, Without<Player>)>,
-) -> bool {
-    for wall_transform in wall_query.iter() {
+fn collision_check(target_player_pos: Vec3, wall_translation: /*chek1:01*/Vec3,) -> bool {
         let collision = collide(
             target_player_pos,
             Vec2::splat(TILE_SIZE * 0.9),
-            wall_transform.translation,
+            wall_translation,
             Vec2::splat(TILE_SIZE),
         );
-        if collision.is_some() {
-            return false;
-        }
-    }
-    true
+        collision.is_some()
 }
 
 // This add the player sprite to the game
@@ -123,8 +127,8 @@ fn spawn_player(mut commands: Commands, ascii: Res<AsciiSheet>) {
         &mut commands,
         &ascii,
         1,
-        Color::rgb(1.0, 6.5, 0.0),
-        Vec3::new(0.810, -0.636, 900.0), //this is where the player will spawn
+        Color::rgb(1.0, 0.4745, 0.0),
+        Vec3::new(1.0, -0.636, 900.0), //this is where the player will spawn
     );
 
     commands
