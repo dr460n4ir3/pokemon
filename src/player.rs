@@ -1,40 +1,118 @@
-use bevy::{prelude::*, sprite::collide_aabb::collide, transform};
+use bevy::{prelude::*, sprite::collide_aabb::collide};
 use bevy_inspector_egui::Inspectable;
+use rand::Rng;
 
 use crate::{
     ascii::{spawn_ascii_sprite, AsciiSheet},
     tilemap::TileCollider,
+    tilemap::EncounterSpawn,
     TILE_SIZE,
+    GameState,
 };
 
 // use bevy::input::gamepad::Gamepad; // this is for gamepad functionality
 
 pub struct PlayerPlugin;
 
+#[derive(Component)]
+pub struct EncounterTrigger {
+    timer: Timer,
+}
+
 #[derive(Component, Inspectable)]
 pub struct Player {
     pub speed: f32, // this is the speed of the player
+    pub active: bool,
+    just_moved: bool,
 }
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(spawn_player)
-        .add_system(camara_follow.after("movement"))
-        .add_system(player_controller.label("movement"));
+        app
+        .add_system_set(
+            SystemSet::on_enter(GameState::Overworld).with_system(show_player))
+        .add_system_set(
+            SystemSet::on_exit(GameState::Overworld).with_system(hide_player))
+        .add_system_set(
+            SystemSet::on_update(GameState::Overworld)
+                .with_system(monster_encounter_check.after("movement"))
+                .with_system(camera_follow.after("movement"))
+                .with_system(player_controller.label("movement")),
+        )
+        .add_system_set(SystemSet::on_update(GameState::Battle).with_system(escape_combat_testing))
+        .add_startup_system(spawn_player);
+    }
+}
+
+// lets use escape combat during testing
+fn escape_combat_testing(mut keyboard_input: ResMut<Input<KeyCode>>, mut state: ResMut<State<GameState>>) {
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        println!("Escaped Battle!");
+        state.set(GameState::Overworld).unwrap();
+        keyboard_input.clear();
+    }
+}
+
+fn hide_player(
+    mut player_query: Query<&mut Visibility, With<Player>>,
+    children_query: Query<&Children, With<Player>>,
+    mut child_visibility_query: Query<&mut Visibility, Without<Player>>,
+) {
+    let mut player_vis: Mut<Visibility> = player_query.single_mut();
+    player_vis.is_visible = false;
+
+    if let Ok(children) = children_query.get_single() {
+        for child in children.iter() {
+            if let Ok(mut child_vis) = child_visibility_query.get_mut(*child) {
+                child_vis.is_visible = false;
+            }
+        }
+    }
+}
+
+fn show_player(
+    mut player_query: Query<&mut Visibility, With<Player>>,
+    children_query: Query<&Children, With<Player>>,
+    mut child_visibility_query: Query<&mut Visibility, Without<Player>>,
+) {
+    let mut player_vis: Mut<Visibility> = player_query.single_mut();
+    player_vis.is_visible = true;
+
+    if let Ok(children) = children_query.get_single() {
+        for child in children.iter() {
+            if let Ok(mut child_vis) = child_visibility_query.get_mut(*child) {
+                child_vis.is_visible = true;
+            }
+        }
     }
 }
 
 //This is the monster encounter system
 fn monster_encounter_check(
-    player_query: Query<&Transform, With<Player>>,
+    mut commands: Commands,
+    mut player_query: Query<(&mut Player, &mut EncounterTrigger, &Transform)>,
     encounter_query: Query<&Transform, (With<EncounterSpawn>, Without<Player>)>,
+    mut state: ResMut<State<GameState>>,
+    mut time: Res<Time>,
 ) {
+    let (mut player, mut encounter_trigger, player_tranform) = player_query.single_mut();
+    let player_translation = player_tranform.translation;
     
-    }
+    if player.just_moved && encounter_query
+        .iter()
+        .any(|&transform| collision_check(player_translation, transform.translation)) 
+        {
+            encounter_trigger.timer.tick(time.delta());
 
+            if encounter_trigger.timer.finished() {
+                println!("Encounter!");
+                state.set(GameState::Battle).expect("Failed to set state");
+            }
+        }
+}
 
 // This function Player movement camera
-fn camara_follow(
+fn camera_follow(
     player_query: Query<&Transform, With<Player>>,
     mut camera_query: Query<&mut Transform, (Without<Player>, With<Camera>)>,
 ) {
@@ -47,13 +125,14 @@ fn camara_follow(
 
 // This is the player movement controller
 fn player_controller(
-    mut player_query: Query<(&Player, &mut Transform)>,
+    mut player_query: Query<(&mut Player, &mut Transform)>,
     wall_query: Query<&Transform, (With<TileCollider>, Without<Player>)>, // this tells the game if the player is colliding with a wall
     keyboard_input: Res<Input<KeyCode>>, // this tells the game if the key is pressed
     // gamepad: Res<Gamepad>, // this tells the game if the gamepad is pressed
     time: Res<Time>, // this tells the game how much time has passed
 ) {
-    let (player, mut transform) = player_query.single_mut(); // this tells the game to only have one player
+    let (mut player, mut transform) = player_query.single_mut(); // this tells the game to only have one player
+            player.just_moved = false;
 
 
     // NOTE: Only use this if you want to use the arrow keys and WASD keys at the same time PRODUCTION only
@@ -97,14 +176,23 @@ fn player_controller(
     let target = transform.translation + Vec3::new(x_delta, 0.0, 0.0);
     if !wall_query
         .iter()
-        .any(|&transform| collision_check(target, transform)) 
+        .any(|&transform| collision_check(target, transform.translation)) 
     {
+        if x_delta != 0.0 {
+            player.just_moved = true;
+        }
         transform.translation = target; //https://youtu.be/uTmp8PiI6aw?si=GMQIwDUQi9Wl44yT&t=77
     }
 
     let target = transform.translation + Vec3::new(0.0, y_delta, 0.0);
-    if collision_check(target, &wall_query) {
-        transform.translation = target;
+    if !wall_query
+        .iter()
+        .any(|&transform| collision_check(target, transform.translation)) 
+    {
+        if y_delta != 0.0 {
+            player.just_moved = true;
+        }
+        transform.translation = target; //https://youtu.be/uTmp8PiI6aw?si=GMQIwDUQi9Wl44yT&t=77
     }
 
     // NOTE: need to implement gamepad functionality
@@ -131,11 +219,19 @@ fn spawn_player(mut commands: Commands, ascii: Res<AsciiSheet>) {
         Vec3::new(1.0, -0.636, 900.0), //this is where the player will spawn
     );
 
+    let ran_dur = rand::thread_rng().gen_range(0.5..2.5); // this is the random duration of the EncounterTigger
+
     commands
         .entity(player)
         .insert(Name::new("Player"))
         .insert(Player {
             speed: 4.0, // this is the speed of the player
+            active: true,
+            just_moved: false,
+        })
+        .insert(EncounterTrigger {
+            //timer: Timer::from_seconds(2.5, true), // set manual duration of the EncounterTigger here
+            timer: Timer::from_seconds(ran_dur, true), // activate random duration of the EncounterTigger here
         })
         .id();
 

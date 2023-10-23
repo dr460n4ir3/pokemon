@@ -17,10 +17,22 @@ use debug::DebugPlugin;
 use player::PlayerPlugin;
 use tilemap::TileMapPlugin;
 
+// This is the game states
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum GameState {
+    // Menu,
+    // Playing,
+    // Paused,
+    // GameOver,
+    Overworld,
+    Battle,
+}
+
 // This is the main function also hold systems
 fn main() {
     let height = 900.0;
     App::new()
+    .add_state(GameState::Overworld)
         .insert_resource(ClearColor(CLEAR))
         .insert_resource(WindowDescriptor {
             width: height * RESOLUTION,
